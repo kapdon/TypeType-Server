@@ -69,3 +69,8 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Bug repor
 ## License
 
 TypeType-Server is licensed under [GPL-3.0](LICENSE), as required by its PipePipeExtractor integration.
+
+## Resume work
+
+See [HANDOFF.md](HANDOFF.md) for the cross-computer setup, private-material inventory,
+and current work state.
