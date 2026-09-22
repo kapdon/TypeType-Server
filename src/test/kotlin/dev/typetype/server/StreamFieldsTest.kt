@@ -1,0 +1,123 @@
+package dev.typetype.server
+
+import dev.typetype.server.models.ExtractionResult
+import dev.typetype.server.models.SponsorBlockSegmentItem
+import dev.typetype.server.models.StreamSegmentItem
+import dev.typetype.server.routes.streamRoutes
+import dev.typetype.server.services.StreamService
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
+import io.ktor.serialization.kotlinx.json.json
+import io.ktor.server.application.install
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.routing.routing
+import io.ktor.server.testing.ApplicationTestBuilder
+import io.ktor.server.testing.testApplication
+import io.mockk.coEvery
+import io.mockk.mockk
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+
+class StreamFieldsTest {
+
+    private val streamService: StreamService = mockk()
+
+    private fun withApp(block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
+        application {
+            install(ContentNegotiation) { json() }
+            routing { streamRoutes(streamService) }
+        }
+        block()
+    }
+
+    @Test
+    fun `GET streams serializes streamType`() = withApp {
+        coEvery { streamService.getStreamInfo(any()) } returns
+            ExtractionResult.Success(
+                testStreamResponse().copy(
+                    streamType = "live_stream",
+                    isLive = true,
+                    isLiveContent = true,
+                    hasLiveManifest = true,
+                    hlsUrl = "https://example.com/live.m3u8",
+                )
+            )
+        val body = client.get(STREAM_URL).bodyAsText()
+        assertTrue(body.contains("\"streamType\":\"live_stream\""))
+        assertTrue(body.contains("\"isLive\":true"))
+        assertTrue(body.contains("\"isPostLive\":false"))
+        assertTrue(body.contains("\"isLiveContent\":true"))
+        assertTrue(body.contains("\"hasLiveManifest\":true"))
+    }
+
+    @Test
+    fun `GET streams serializes isShortFormContent requiresMembership startPosition`() = withApp {
+        coEvery { streamService.getStreamInfo(any()) } returns
+            ExtractionResult.Success(
+                testStreamResponse().copy(
+                    isShortFormContent = true,
+                    requiresMembership = true,
+                    startPosition = 42L,
+                )
+            )
+        val body = client.get(STREAM_URL).bodyAsText()
+        assertTrue(body.contains("\"isShortFormContent\":true"))
+        assertTrue(body.contains("\"requiresMembership\":true"))
+        assertTrue(body.contains("\"startPosition\":42"))
+    }
+
+    @Test
+    fun `GET streams serializes streamSegments`() = withApp {
+        val segment = StreamSegmentItem(
+            title = "Intro",
+            startTimeSeconds = 0,
+            channelName = null,
+            url = null,
+            previewUrl = null,
+        )
+        coEvery { streamService.getStreamInfo(any()) } returns
+            ExtractionResult.Success(testStreamResponse().copy(streamSegments = listOf(segment)))
+        val body = client.get(STREAM_URL).bodyAsText()
+        assertTrue(body.contains("\"streamSegments\""))
+        assertTrue(body.contains("\"title\":\"Intro\""))
+        assertTrue(body.contains("\"startTimeSeconds\":0"))
+    }
+
+    @Test
+    fun `GET streams serializes audioLocale in audioStreams`() = withApp {
+        val audio = testAudioStream().copy(audioLocale = "en", isOriginal = true)
+        coEvery { streamService.getStreamInfo(any()) } returns
+            ExtractionResult.Success(
+                testStreamResponse(audioStreams = listOf(audio)).copy(
+                    originalAudioTrackId = "en.0",
+                    preferredDefaultAudioTrackId = "en.0",
+                )
+            )
+        val body = client.get(STREAM_URL).bodyAsText()
+        assertTrue(body.contains("\"audioLocale\":\"en\""))
+        assertTrue(body.contains("\"isOriginal\":true"))
+        assertTrue(body.contains("\"originalAudioTrackId\":\"en.0\""))
+        assertTrue(body.contains("\"preferredDefaultAudioTrackId\":\"en.0\""))
+    }
+
+    @Test
+    fun `GET streams serializes sponsorBlockSegments`() = withApp {
+        val segment = SponsorBlockSegmentItem(
+            startTime = 55649.0,
+            endTime = 174610.0,
+            category = "sponsor",
+            action = "skip",
+        )
+        coEvery { streamService.getStreamInfo(any()) } returns
+            ExtractionResult.Success(testStreamResponse().copy(sponsorBlockSegments = listOf(segment)))
+        val body = client.get(STREAM_URL).bodyAsText()
+        assertTrue(body.contains("\"sponsorBlockSegments\""))
+        assertTrue(body.contains("\"category\":\"sponsor\""))
+        assertTrue(body.contains("\"action\":\"skip\""))
+        assertTrue(body.contains("55649.0"))
+    }
+
+    private companion object {
+        const val STREAM_URL = "/streams/niconico?url=https://www.nicovideo.jp/watch/sm9"
+    }
+}
